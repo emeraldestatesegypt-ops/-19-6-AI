@@ -1,172 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Reusable, Hardened Security Helpers
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
-    }
-
-    function isBootstrappedAdmin() {
+    function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == "A.fawzy8866@gmail.com" || 
-        request.auth.token.email == "a.fawzy8866@gmail.com" ||
-        request.auth.token.email == "Emeraldestatesegypt@gmail.com" ||
-        request.auth.token.email == "emeraldestatesegypt@gmail.com" ||
-        request.auth.uid == "n5AwnuWrwhTm5brJJiJDU6uJunM2"
+        request.auth.uid == "n5AwnuWrwhTm5brJJiJDU6uJunM2" ||
+        ("email" in request.auth.token && (
+          request.auth.token.email == "emeraldestatesegypt@gmail.com" ||
+          request.auth.token.email == "Emeraldestatesegypt@gmail.com" ||
+          request.auth.token.email == "a.fawzy8866@gmail.com" ||
+          request.auth.token.email == "A.fawzy8866@gmail.com"
+        )) ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.status != "pending")
       );
     }
 
-    function isRegisteredAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
-    function isAdmin() {
-      return isBootstrappedAdmin() || isRegisteredAdmin();
-    }
-
-    function isValidId(id) {
-       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // STANDALONE DATA SCHEMA BLUEPRINTS FOR VALIDATION (Anti-Update-Gap)
-    function isValidLead(data) {
-      return data.keys().hasAll(['name', 'phone', 'interest', 'stage', 'hot'])
-        && data.keys().size() <= 15
-        && data.name is string
-        && data.phone is string
-        && data.interest is string
-        && data.stage is string;
-    }
-
-    function isValidListing(data) {
-      return data.keys().hasAll(['code', 'cmp', 'type', 'beds', 'area', 'price', 'ai', 'status', 'img', 'createdAt', 'updatedAt'])
-        && data.keys().size() == 11
-        && data.code is string && data.code.size() <= 50
-        && data.cmp is string && data.cmp.size() <= 100
-        && data.type is string && data.type.size() <= 50
-        && data.beds is int && data.beds >= 0
-        && data.area is int && data.area >= 0
-        && data.price is string && data.price.size() <= 50
-        && data.ai is number && data.ai >= 0.0 && data.ai <= 10.0
-        && data.status is string && data.status in ['Active', 'Review', 'Sold']
-        && data.img is int;
-    }
-
-    function isValidAgent(data) {
-      return data.keys().hasAll(['name', 'desc', 'emoji', 'color', 'status', 'load', 'tasks', 'updatedAt'])
-        && data.keys().size() <= 10
-        && data.name is string && data.name.size() <= 100
-        && data.desc is string && data.desc.size() <= 1000
-        && data.emoji is string && data.emoji.size() <= 40
-        && data.color is string && data.color.size() <= 10
-        && data.status is string && data.status in ['Online', 'Running', 'Idle']
-        && data.load is int && data.load >= 0 && data.load <= 100
-        && data.tasks is int && data.tasks >= 0;
-    }
-
-    function isValidWorkflow(data) {
-      return data.keys().hasAll(['name', 'status', 'runs', 'last', 'color', 'updatedAt'])
-        && data.keys().size() <= 10
-        && data.name is string && data.name.size() <= 100
-        && (data.get('nameAr', null) == null || (data.get('nameAr', '') is string && data.get('nameAr', '').size() <= 100))
-        && (data.get('desc', null) == null || (data.get('desc', '') is string && data.get('desc', '').size() <= 1000))
-        && (data.get('descAr', null) == null || (data.get('descAr', '') is string && data.get('descAr', '').size() <= 1000))
-        && data.status is string && data.status in ['active', 'warning', 'paused']
-        && data.runs is int && data.runs >= 0
-        && data.last is string && data.last.size() <= 100
-        && data.color is string && data.color.size() <= 10;
-    }
-
-    function isValidAdminEntry(data) {
-      return data.keys().hasAll(['email', 'role', 'createdAt'])
-        && data.keys().size() <= 5
-        && data.email is string && data.email.size() <= 200
-        && data.role is string && data.role in ['Admin', 'Superadmin']
-        && (data.get('status', null) == null || (data.get('status', '') is string && data.get('status', '') in ['pending', 'approved', 'rejected']));
-    }
-
-    function isValidChatMessage(data) {
-      return data.keys().hasAll(['sender', 'text', 'timestamp'])
-        && data.keys().size() == 3
-        && data.sender is string && data.sender in ['ai', 'user']
-        && data.text is string && data.text.size() <= 5000;
-    }
-
-    function isValidNotification(data) {
-      return data.keys().hasAll(['type', 'title', 'message', 'read', 'createdAt'])
-        && data.keys().size() <= 7
-        && data.type is string && data.type in ['lead', 'listing', 'error', 'system']
-        && data.title is string && data.title.size() <= 200
-        && data.message is string && data.message.size() <= 2000
-        && data.read is bool
-        && (data.get('titleAr', null) == null || (data.get('titleAr', '') is string && data.get('titleAr', '').size() <= 200))
-        && (data.get('messageAr', null) == null || (data.get('messageAr', '') is string && data.get('messageAr', '').size() <= 2000));
-    }
-
-    // Dynamic and Secure Route Matching Rules
-
     match /leads/{leadId} {
       allow read: if isAdmin();
-      allow create: if isAdmin()
-        && isValidId(leadId)
-        && isValidLead(incoming())
-        && incoming().createdAt != null
-        && incoming().updatedAt != null;
-      allow update: if isAdmin()
-        && isValidLead(incoming())
-        && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt != null;
-      allow delete: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
     match /listings/{listingId} {
       allow read: if isSignedIn();
-      allow create: if isAdmin()
-        && isValidId(listingId)
-        && isValidListing(incoming())
-        && incoming().createdAt != null
-        && incoming().updatedAt != null;
-      allow update: if isAdmin()
-        && isValidListing(incoming())
-        && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt != null;
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /agents/{agentId} {
       allow read: if isAdmin();
-      allow create, update: if isAdmin()
-        && isValidId(agentId)
-        && isValidAgent(incoming())
-        && incoming().updatedAt != null;
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /workflows/{workflowId} {
       allow read: if isAdmin();
-      allow create, update: if isAdmin()
-        && isValidId(workflowId)
-        && isValidWorkflow(incoming())
-        && incoming().updatedAt != null;
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /chats/{chatId} {
@@ -174,46 +49,18 @@ service cloud.firestore {
     }
 
     match /admins/{userId} {
-      allow get: if true;
-      allow list: if isAdmin();
-      allow create: if (isAdmin() || (isSignedIn() && request.auth.uid == userId))
-        && isValidId(userId)
-        && isValidAdminEntry(incoming())
-        && incoming().createdAt != null;
-      allow update: if isAdmin()
-        && isValidId(userId)
-        && isValidAdminEntry(incoming())
-        && incoming().createdAt != null;
-      allow delete: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
     match /notifications/{notificationId} {
       allow read: if isAdmin();
-      allow create: if isAdmin()
-        && isValidId(notificationId)
-        && isValidNotification(incoming())
-        && incoming().createdAt != null;
-      allow update: if isAdmin()
-        && isValidNotification(incoming())
-        && incoming().createdAt == existing().createdAt;
-      allow delete: if isAdmin();
-    }
-
-    function isValidSearchLog(data) {
-      return data.keys().hasAll(['query', 'scope', 'timestamp'])
-        && data.keys().size() <= 5
-        && data.query is string && data.query.size() <= 200
-        && data.scope is string && data.scope in ['all', 'leads', 'listings', 'agents', 'workflows']
-        && (data.get('userId', null) == null || (data.get('userId', '') is string && data.get('userId', '').size() <= 128))
-        && (data.get('isVoice', null) == null || data.get('isVoice', false) is bool);
+      allow write: if isAdmin();
     }
 
     match /searches/{searchId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && isValidId(searchId)
-        && isValidSearchLog(incoming())
-        && incoming().timestamp != null;
+      allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
   }

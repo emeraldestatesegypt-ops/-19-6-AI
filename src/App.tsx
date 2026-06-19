@@ -3,7 +3,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { onSnapshot, doc as fireDoc, getDoc as getFireDoc, addDoc, collection } from 'firebase/firestore';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { SlidersHorizontal, Mic } from 'lucide-react';
-import { auth, db, createSierraNotification } from './firebase';
+import { auth, db, createSierraNotification, handleFirestoreError, OperationType } from './firebase';
 import { seedFirestore } from './seed';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -438,15 +438,20 @@ export default function App() {
             }
           }
         } catch (e) {
-          console.error("Admins directory check returned: ", e);
+          console.warn("Admins directory check returned: ", e);
+          // Do not throw handleFirestoreError here to prevent bubbling and breaking the boot block
         }
 
         const passesAdminRule = isBootstrapped || hasRegisterDoc;
         setIsAdminUser(passesAdminRule);
 
         if (passesAdminRule) {
-          // Pre-seed clean Firebase indexes on absolute initial setup run
-          await seedFirestore();
+          try {
+            // Pre-seed clean Firebase indexes on absolute initial setup run
+            await seedFirestore();
+          } catch (seedErr) {
+            console.warn("Seeding process skipped or failed:", seedErr);
+          }
         } else {
           await createSierraNotification(
             'error',

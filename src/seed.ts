@@ -152,9 +152,14 @@ const INITIAL_LISTINGS = [
       await batch.commit();
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'leads');
+    if (error instanceof Error && error.message.includes("permission")) {
+      handleFirestoreError(error, OperationType.LIST, 'leads');
+    } else {
+      handleFirestoreError(error, OperationType.WRITE, 'leads');
+    }
     // Continue
   }
+
 
   // 2. Agents
   try {

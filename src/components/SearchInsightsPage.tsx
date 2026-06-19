@@ -3,6 +3,8 @@ import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { SearchLog } from '../types';
 import { motion } from 'motion/react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { 
   BarChart, 
   Bar, 
@@ -25,6 +27,7 @@ interface SearchInsightsPageProps {
 export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPageProps) {
   const [searches, setSearches] = useState<SearchLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   
   // Local UI filters
   const [scopeFilter, setScopeFilter] = useState<'all' | 'leads' | 'listings' | 'agents' | 'workflows'>('all');
@@ -197,6 +200,181 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to download telemetry logs:", err);
+    }
+  };
+
+  const downloadPDFReport = async () => {
+    try {
+      setGeneratingPdf(true);
+      
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 10;
+      const contentWidth = pageWidth - 2 * margin; // 190mm
+      let currentY = 15;
+
+      // 1. Draw PDF Header Title Banner
+      pdf.setFillColor(12, 19, 40); // Darker base (#0c1328)
+      pdf.rect(margin, currentY, contentWidth, 25, 'F');
+      
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text(isAr ? 'تقرير تحليلات محرك بحث CRM' : 'SIERRA CRM - SEARCH INSIGHTS REPORT', margin + 5, currentY + 10);
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(148, 163, 184); // Slate color
+      pdf.text(isAr ? 'تحليلات تفاعلية لعمليات البحث في الوقت الفعلي للوكلاء والوسطاء' : 'Real-time telemetry and search performance overview for real estate brokers.', margin + 5, currentY + 17);
+
+      currentY += 25 + 5;
+
+      // 2. Metadata sub-table
+      pdf.setFillColor(16, 23, 48); // Dark card (#101730)
+      pdf.rect(margin, currentY, contentWidth, 18, 'F');
+      
+      pdf.setTextColor(148, 163, 184);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(isAr ? 'الفترة الزمنية:' : 'TIMEFRAME:', margin + 5, currentY + 7);
+      pdf.text(isAr ? 'نطاق البحث:' : 'SCOPE FILTER:', margin + 65, currentY + 7);
+      pdf.text(isAr ? 'طريقة المدخلات:' : 'INPUT METHOD:', margin + 125, currentY + 7);
+      
+      pdf.setTextColor(34, 211, 238); // Cyan (#22d3ee)
+      pdf.setFont('helvetica', 'normal');
+      const timeLabel = timeFilter === '7d' ? (isAr ? 'آخر 7 أيام' : 'Last 7 Days') : timeFilter === '30d' ? (isAr ? 'آخر 30 يوم' : 'Last 30 Days') : (isAr ? 'كل الأوقات' : 'All Time');
+      pdf.text(timeLabel, margin + 5, currentY + 13);
+      pdf.text(scopeFilter.toUpperCase(), margin + 65, currentY + 13);
+      pdf.text(methodFilter.toUpperCase(), margin + 125, currentY + 13);
+      
+      currentY += 18 + 8;
+
+      // 3. Capture KPI cards
+      const kpisElement = document.getElementById('insights-kpi-cards');
+      if (kpisElement) {
+        const kpisCanvas = await html2canvas(kpisElement, {
+          scale: 2,
+          backgroundColor: '#0a0f1d',
+          useCORS: true,
+          logging: false
+        });
+        const kpisImg = kpisCanvas.toDataURL('image/png');
+        const kpisHeight = (kpisCanvas.height * contentWidth) / kpisCanvas.width;
+        pdf.addImage(kpisImg, 'PNG', margin, currentY, contentWidth, kpisHeight);
+        currentY += kpisHeight + 8;
+      }
+
+      // 4. Capture Keywords Chart and Leaderboard
+      const chartsElement = document.getElementById('insights-charts-card');
+      if (chartsElement) {
+        const chartsCanvas = await html2canvas(chartsElement, {
+          scale: 2,
+          backgroundColor: '#0a0f1d',
+          useCORS: true,
+          logging: false
+        });
+        const chartsImg = chartsCanvas.toDataURL('image/png');
+        const chartsHeight = (chartsCanvas.height * contentWidth) / chartsCanvas.width;
+
+        if (currentY + chartsHeight > pageHeight - 15) {
+          pdf.addPage();
+          currentY = 15;
+          
+          // Header on Page 2
+          pdf.setFillColor(12, 19, 40);
+          pdf.rect(margin, currentY, contentWidth, 10, 'F');
+          pdf.setTextColor(255, 255, 255);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(10);
+          pdf.text(isAr ? 'تحليلات الكلمات الأكثر بحثاً والاتجاهات المباشرة' : 'MOST SEARCHED ANALYTICS & POPULARITY TRENDS', margin + 3, currentY + 6.5);
+          currentY += 10 + 5;
+        }
+
+        pdf.addImage(chartsImg, 'PNG', margin, currentY, contentWidth, chartsHeight);
+        currentY += chartsHeight + 8;
+      }
+
+      // 5. Capture Weekly Traffic Heatmap
+      const heatmapElement = document.getElementById('insights-heatmap-card');
+      if (heatmapElement) {
+        const heatmapCanvas = await html2canvas(heatmapElement, {
+          scale: 2,
+          backgroundColor: '#0a0f1d',
+          useCORS: true,
+          logging: false
+        });
+        const heatmapImg = heatmapCanvas.toDataURL('image/png');
+        const heatmapHeight = (heatmapCanvas.height * contentWidth) / heatmapCanvas.width;
+
+        if (currentY + heatmapHeight > pageHeight - 15) {
+          pdf.addPage();
+          currentY = 15;
+        }
+
+        // Section divider banner for Heatmap page
+        pdf.setFillColor(12, 19, 40);
+        pdf.rect(margin, currentY, contentWidth, 10, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.text(isAr ? 'خريطة توزيع حركة البحث الأسبوعية' : 'WEEKLY HOURLY TRAFFIC HEATMAP DATA', margin + 3, currentY + 6.5);
+        currentY += 10 + 5;
+
+        pdf.addImage(heatmapImg, 'PNG', margin, currentY, contentWidth, heatmapHeight);
+        currentY += heatmapHeight + 8;
+      }
+
+      // 6. Draw automated recommendation summary
+      if (currentY + 25 > pageHeight - 15) {
+        pdf.addPage();
+        currentY = 15;
+      }
+
+      pdf.setFillColor(15, 23, 42); // slate-900
+      pdf.rect(margin, currentY, contentWidth, 22, 'F');
+      
+      pdf.setDrawColor(30, 41, 59); // slate-800
+      pdf.rect(margin, currentY, contentWidth, 22, 'S');
+
+      pdf.setTextColor(148, 163, 184); // slate-400
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(isAr ? 'ملاحظة وتوصية أتمتة الذكاء الاصطناعي:' : 'INTELLIGENT INTEGRATION & OPERATIONS DIRECTIVE:', margin + 4, currentY + 6);
+      
+      pdf.setTextColor(226, 232, 240); // slate-200
+      pdf.setFont('helvetica', 'normal');
+      const noteText = isAr 
+        ? 'تم تجميع هذا التقرير بدقة وبشكل تلقائي بناءا على نشاط البحث الحالي لوساطة Emerald Estates. الرجاء استخدام البيانات لتوجيه حملات التسويق وتحسين توزيع الميزانية العقارية.'
+        : 'This analytics document highlights real user search frequencies captured in the Sierra CRM database. Use these query telemetry profiles to align active inventory and streamline automated agent match parameters.';
+      
+      const noteSplit = pdf.splitTextToSize(noteText, contentWidth - 10);
+      pdf.text(noteSplit, margin + 4, currentY + 11);
+
+      // 7. Dynamic pagination footer overlay
+      const totalPages = pdf.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setTextColor(100, 116, 139);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.text(isAr ? `سييرا CRM - صفحة ${i} من ${totalPages}` : `Sierra Real Estate CRM • Page ${i} of ${totalPages}`, margin, pageHeight - 8);
+        
+        const reportRef = `REF: SEC-LOG-${new Date().getFullYear()}-${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${new Date().getDate().toString().padStart(2, '0')}`;
+        pdf.text(reportRef, pageWidth - margin - 45, pageHeight - 8);
+      }
+
+      const reportDateStr = new Date().toISOString().slice(0, 10);
+      pdf.save(`crm_insights_report_${reportDateStr}.pdf`);
+    } catch (err) {
+      console.error("Failed to generate PDF Report:", err);
+    } finally {
+      setGeneratingPdf(false);
     }
   };
 
@@ -503,15 +681,35 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {searches.length > 0 && (
-            <button
-              onClick={downloadTelemetryLogs}
-              className="px-3.5 py-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 active:bg-cyan-500/30 rounded border border-cyan-500/30 transition-all font-semibold uppercase flex items-center gap-1.5 cursor-pointer"
-              id="btn-download-search-telemetry"
-            >
-              📥 {isAr ? 'تنزيل القياسات الفورية' : 'Export Logs (.JSON)'}
-            </button>
+            <>
+              <button
+                onClick={downloadPDFReport}
+                disabled={generatingPdf}
+                className="px-3.5 py-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 active:bg-cyan-500/30 rounded border border-cyan-500/30 transition-all font-semibold uppercase flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                id="btn-download-pdf-report"
+              >
+                {generatingPdf ? (
+                  <>
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full mr-1" />
+                    {isAr ? 'جاري التجهيز...' : 'GENERATING...'}
+                  </>
+                ) : (
+                  <>
+                    📄 {isAr ? 'تحميل تقرير PDF' : 'Download PDF Report'}
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={downloadTelemetryLogs}
+                className="px-3.5 py-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 active:bg-cyan-500/30 rounded border border-cyan-500/30 transition-all font-semibold uppercase flex items-center gap-1.5 cursor-pointer"
+                id="btn-download-search-telemetry"
+              >
+                📥 {isAr ? 'تنزيل القياسات الفورية' : 'Export Logs (.JSON)'}
+              </button>
+            </>
           )}
 
           {searches.length === 0 && !loading && (
@@ -527,7 +725,7 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
       </div>
 
       {/* Grid of Key Performance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="insights-kpi-cards">
         {/* Metric 1 */}
         <div className="p-5 bg-gradient-to-br from-[#0c1328]/90 to-[#0e1730]/90 border border-slate-800/80 rounded-xl relative overflow-hidden">
           <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">
