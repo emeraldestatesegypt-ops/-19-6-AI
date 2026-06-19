@@ -21,7 +21,8 @@ service cloud.firestore {
         request.auth.token.email == "A.fawzy8866@gmail.com" || 
         request.auth.token.email == "a.fawzy8866@gmail.com" ||
         request.auth.token.email == "Emeraldestatesegypt@gmail.com" ||
-        request.auth.token.email == "emeraldestatesegypt@gmail.com"
+        request.auth.token.email == "emeraldestatesegypt@gmail.com" ||
+        request.auth.uid == "n5AwnuWrwhTm5brJJiJDU6uJunM2"
       );
     }
 
@@ -96,9 +97,10 @@ service cloud.firestore {
 
     function isValidAdminEntry(data) {
       return data.keys().hasAll(['email', 'role', 'createdAt'])
-        && data.keys().size() == 3
+        && data.keys().size() <= 5
         && data.email is string && data.email.size() <= 200
-        && data.role is string && data.role in ['Admin', 'Superadmin'];
+        && data.role is string && data.role in ['Admin', 'Superadmin']
+        && (data.get('status', null) == null || (data.get('status', '') is string && data.get('status', '') in ['pending', 'approved', 'rejected']));
     }
 
     function isValidChatMessage(data) {
@@ -126,12 +128,12 @@ service cloud.firestore {
       allow create: if isAdmin()
         && isValidId(leadId)
         && isValidLead(incoming())
-        && incoming().createdAt is timestamp
-        && incoming().updatedAt is timestamp;
+        && incoming().createdAt != null
+        && incoming().updatedAt != null;
       allow update: if isAdmin()
         && isValidLead(incoming())
         && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt is timestamp;
+        && incoming().updatedAt != null;
       allow delete: if isAdmin();
     }
 
@@ -140,12 +142,12 @@ service cloud.firestore {
       allow create: if isAdmin()
         && isValidId(listingId)
         && isValidListing(incoming())
-        && incoming().createdAt is timestamp
-        && incoming().updatedAt is timestamp;
+        && incoming().createdAt != null
+        && incoming().updatedAt != null;
       allow update: if isAdmin()
         && isValidListing(incoming())
         && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt is timestamp;
+        && incoming().updatedAt != null;
       allow delete: if isAdmin();
     }
 
@@ -154,7 +156,7 @@ service cloud.firestore {
       allow create, update: if isAdmin()
         && isValidId(agentId)
         && isValidAgent(incoming())
-        && incoming().updatedAt is timestamp;
+        && incoming().updatedAt != null;
       allow delete: if isAdmin();
     }
 
@@ -163,7 +165,7 @@ service cloud.firestore {
       allow create, update: if isAdmin()
         && isValidId(workflowId)
         && isValidWorkflow(incoming())
-        && incoming().updatedAt is timestamp;
+        && incoming().updatedAt != null;
       allow delete: if isAdmin();
     }
 
@@ -177,11 +179,11 @@ service cloud.firestore {
       allow create: if (isAdmin() || (isSignedIn() && request.auth.uid == userId))
         && isValidId(userId)
         && isValidAdminEntry(incoming())
-        && incoming().createdAt is timestamp;
+        && incoming().createdAt != null;
       allow update: if isAdmin()
         && isValidId(userId)
         && isValidAdminEntry(incoming())
-        && incoming().createdAt is timestamp;
+        && incoming().createdAt != null;
       allow delete: if isAdmin();
     }
 
@@ -190,7 +192,7 @@ service cloud.firestore {
       allow create: if isAdmin()
         && isValidId(notificationId)
         && isValidNotification(incoming())
-        && incoming().createdAt is timestamp;
+        && incoming().createdAt != null;
       allow update: if isAdmin()
         && isValidNotification(incoming())
         && incoming().createdAt == existing().createdAt;
@@ -211,7 +213,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && isValidId(searchId)
         && isValidSearchLog(incoming())
-        && incoming().timestamp is timestamp;
+        && incoming().timestamp != null;
       allow update, delete: if isAdmin();
     }
   }

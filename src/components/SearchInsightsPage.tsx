@@ -11,7 +11,10 @@ import {
   Tooltip, 
   ResponsiveContainer, 
   Cell,
-  CartesianGrid
+  CartesianGrid,
+  AreaChart,
+  Area,
+  Brush
 } from 'recharts';
 
 interface SearchInsightsPageProps {
@@ -26,6 +29,37 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
   // Local UI filters
   const [scopeFilter, setScopeFilter] = useState<'all' | 'leads' | 'listings' | 'agents' | 'workflows'>('all');
   const [methodFilter, setMethodFilter] = useState<'all' | 'voice' | 'typed'>('all');
+  const [timeFilter, setTimeFilter] = useState<'7d' | '30d' | 'all'>('7d');
+  const [brushIndices, setBrushIndices] = useState<{ start: number; end: number } | null>(null);
+
+  // Heatmap interactive state
+  const [hoveredHeatmapCell, setHoveredHeatmapCell] = useState<{
+    dayIndex: number;
+    hour: number;
+    count: number;
+    queries: string[];
+  } | null>(null);
+
+  // Translate-safe and RTL-safe day & hour values
+  const daysOfWeekEN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const daysOfWeekAR = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+  const daysOfWeekAbbrevEN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const daysOfWeekAbbrevAR = ['إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت', 'أحد'];
+
+  const daysLabels = isAr ? daysOfWeekAbbrevAR : daysOfWeekAbbrevEN;
+  const daysFullLabels = isAr ? daysOfWeekAR : daysOfWeekEN;
+
+  const formatHourLabel = (hour: number) => {
+    if (isAr) {
+      if (hour === 0) return '12 ص';
+      if (hour === 12) return '12 م';
+      return hour > 12 ? `${hour - 12} م` : `${hour} ص`;
+    } else {
+      if (hour === 0) return '12 AM';
+      if (hour === 12) return '12 PM';
+      return hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+    }
+  };
 
   // Real-time listener for the searches collection
   useEffect(() => {
@@ -82,8 +116,51 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
       { query: 'Hot buyers', scope: 'leads', isVoice: true, offsetMin: 600 },
     ];
 
+    const extraMockSearches: { query: string; scope: string; isVoice: boolean; offsetMin: number }[] = [];
+    const queriesByScope = [
+      { query: 'Apartment in Zayed', scope: 'listings', isVoice: false },
+      { query: 'Townhouse Marassi', scope: 'listings', isVoice: true },
+      { query: 'Tagamoa Commercial', scope: 'listings', isVoice: false },
+      { query: 'Verify client KYC', scope: 'workflows', isVoice: false },
+      { query: 'Send brochure to lead', scope: 'workflows', isVoice: true },
+      { query: 'Nader Omar chatbot', scope: 'agents', isVoice: false },
+      { query: 'Fady Agent online', scope: 'agents', isVoice: true },
+      { query: 'New Cash Buyer lead', scope: 'leads', isVoice: false },
+      { query: 'Viewing scheduled Villa', scope: 'leads', isVoice: false }
+    ];
+
+    // Distribute they evenly over the previous days of the week to populate the heatmap with multiple coordinates
+    for (let day = 1; day <= 6; day++) {
+      // morning peak (~10:00 AM)
+      const morningOffset = day * 24 * 60 + (14 * 60) + Math.floor(Math.random() * 60) - 30;
+      // afternoon peak (~3:00 PM)
+      const afternoonOffset = day * 24 * 60 + (9 * 60) + Math.floor(Math.random() * 60) - 30;
+      // evening peak (~9:00 PM)
+      const eveningOffset = day * 24 * 60 + (3 * 60) + Math.floor(Math.random() * 60) - 30;
+
+      const q1 = queriesByScope[Math.floor(Math.random() * queriesByScope.length)];
+      extraMockSearches.push({ ...q1, offsetMin: morningOffset });
+
+      const q2 = queriesByScope[Math.floor(Math.random() * queriesByScope.length)];
+      extraMockSearches.push({ ...q2, offsetMin: afternoonOffset });
+
+      const q3 = queriesByScope[Math.floor(Math.random() * queriesByScope.length)];
+      extraMockSearches.push({ ...q3, offsetMin: eveningOffset });
+    }
+
     try {
+      // Write the standard mock searches
       for (const s of mockSearches) {
+        await addDoc(collection(db, 'searches'), {
+          query: s.query,
+          scope: s.scope,
+          isVoice: s.isVoice,
+          timestamp: new Date(Date.now() - s.offsetMin * 60000),
+          userId: 'seed-runner'
+        });
+      }
+      // Write the extra distributed heatmap mock searches
+      for (const s of extraMockSearches) {
         await addDoc(collection(db, 'searches'), {
           query: s.query,
           scope: s.scope,
@@ -98,16 +175,161 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
     setLoading(false);
   };
 
-  // Filter logs
+  // Extract and download search telemetry logs as a JSON file
+  const downloadTelemetryLogs = () => {
+    try {
+      const exportData = searches.map(item => ({
+        timestamp: item.timestamp instanceof Date ? item.timestamp.toISOString() : new Date(item.timestamp).toISOString(),
+        query: item.query,
+        scope: item.scope,
+        isVoice: item.isVoice
+      }));
+      
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `crm_search_telemetry_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download telemetry logs:", err);
+    }
+  };
+
+  // Reset brush selection whenever main global filters change to prevent out of bounds
+  useEffect(() => {
+    setBrushIndices(null);
+  }, [timeFilter, scopeFilter, methodFilter]);
+
+  // Construct a stable and continuous list of days based on the selected time filter
+  const timeSeriesDays = useMemo(() => {
+    const now = new Date();
+    const days: Date[] = [];
+    
+    let numDays = 7;
+    if (timeFilter === '30d') {
+      numDays = 30;
+    } else if (timeFilter === 'all') {
+      if (searches.length > 0) {
+        const oldest = new Date(Math.min(...searches.map(s => {
+          const t = s.timestamp;
+          return t instanceof Date ? t.getTime() : new Date(t).getTime();
+        })));
+        const diffTime = Math.abs(now.getTime() - oldest.getTime());
+        numDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        // Cap at 60 days to keep the timeline container responsive and elegant
+        if (numDays > 60) numDays = 60;
+        if (numDays < 7) numDays = 7;
+      } else {
+        numDays = 7;
+      }
+    }
+
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      days.push(d);
+    }
+    return days;
+  }, [searches, timeFilter]);
+
+  // Map each day in the time series to its search volume
+  const timelineData = useMemo(() => {
+    return timeSeriesDays.map((day) => {
+      const startOfDay = new Date(day);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(day);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      let count = 0;
+      let voiceCount = 0;
+
+      searches.forEach((item) => {
+        const matchScope = scopeFilter === 'all' || item.scope === scopeFilter;
+        const matchMethod = methodFilter === 'all' || 
+          (methodFilter === 'voice' && item.isVoice) || 
+          (methodFilter === 'typed' && !item.isVoice);
+
+        const itemTime = item.timestamp instanceof Date ? item.timestamp : new Date(item.timestamp);
+
+        if (matchScope && matchMethod && itemTime >= startOfDay && itemTime <= endOfDay) {
+          count++;
+          if (item.isVoice) voiceCount++;
+        }
+      });
+
+      // Format date label
+      const formattedDate = day.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+
+      return {
+        date: day,
+        formattedTime: formattedDate,
+        count: count,
+        voiceCount: voiceCount,
+      };
+    });
+  }, [timeSeriesDays, searches, scopeFilter, methodFilter, isAr]);
+
+  // Derive the active custom time window from the brush selection
+  const activeTimeWindow = useMemo(() => {
+    if (!brushIndices) {
+      return null;
+    }
+    const { start, end } = brushIndices;
+    const startPoint = timelineData[start];
+    const endPoint = timelineData[end];
+    
+    if (!startPoint || !endPoint) {
+      return null;
+    }
+    
+    const startDate = new Date(startPoint.date);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(endPoint.date);
+    endDate.setHours(23, 59, 59, 999);
+
+    return { startDate, endDate };
+  }, [brushIndices, timelineData]);
+
+  // Filter logs with base constraints + the dynamic brush time range
   const filteredSearches = useMemo(() => {
+    const now = new Date();
     return searches.filter((item) => {
       const matchScope = scopeFilter === 'all' || item.scope === scopeFilter;
       const matchMethod = methodFilter === 'all' || 
         (methodFilter === 'voice' && item.isVoice) || 
         (methodFilter === 'typed' && !item.isVoice);
-      return matchScope && matchMethod;
+        
+      if (!matchScope || !matchMethod) return false;
+
+      const itemTime = item.timestamp instanceof Date ? item.timestamp : new Date(item.timestamp);
+
+      // Base timefilter constraint
+      if (timeFilter === '7d') {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        if (itemTime < sevenDaysAgo) return false;
+      } else if (timeFilter === '30d') {
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        if (itemTime < thirtyDaysAgo) return false;
+      }
+
+      // AND custom brush time window constraint
+      if (activeTimeWindow) {
+        if (itemTime < activeTimeWindow.startDate || itemTime > activeTimeWindow.endDate) {
+          return false;
+        }
+      }
+
+      return true;
     });
-  }, [searches, scopeFilter, methodFilter]);
+  }, [searches, scopeFilter, methodFilter, timeFilter, activeTimeWindow]);
 
   // Aggregate word frequencies and trends (by comparing youngest half of dataset vs older half)
   const chartData = useMemo(() => {
@@ -201,6 +423,70 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
     };
   }, [filteredSearches]);
 
+  // Heatmap hourly data matrix for current week
+  const heatmapData = useMemo(() => {
+    const now = new Date();
+    
+    // Find Monday of current week at 00:00:00
+    const currentDay = now.getDay(); // 0 is Sunday, 1 is Monday ... 6 is Saturday
+    const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - distanceToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const matrix: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+    const queriesMatrix: string[][][] = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => []));
+
+    searches.forEach((item) => {
+      const timestamp = item.timestamp;
+      if (timestamp >= startOfWeek) {
+        const day = timestamp.getDay(); // 0 is Sunday, 1 is Monday...
+        const matrixDayIndex = day === 0 ? 6 : day - 1; // Mon=0, Tue=1, ... Sun=6
+        const hour = timestamp.getHours();
+        
+        if (matrixDayIndex >= 0 && matrixDayIndex < 7 && hour >= 0 && hour < 24) {
+          matrix[matrixDayIndex][hour] += 1;
+          if (item.query && item.query.trim()) {
+            queriesMatrix[matrixDayIndex][hour].push(item.query);
+          }
+        }
+      }
+    });
+
+    let maxCountInMatrix = 0;
+    for (let d = 0; d < 7; d++) {
+      for (let h = 0; h < 24; h++) {
+        if (matrix[d][h] > maxCountInMatrix) {
+          maxCountInMatrix = matrix[d][h];
+        }
+      }
+    }
+
+    return { matrix, queriesMatrix, startOfWeek, maxCountInMatrix };
+  }, [searches]);
+
+  const weeklyTotalSearches = useMemo(() => {
+    let count = 0;
+    heatmapData.matrix.forEach(row => {
+      row.forEach(cell => {
+        count += cell;
+      });
+    });
+    return count;
+  }, [heatmapData]);
+
+  const getCellColorClass = (count: number, maxCount: number) => {
+    if (count === 0) return 'bg-[#0a0f1d] border border-slate-900 opacity-30 hover:opacity-100 hover:bg-slate-850/40';
+    if (maxCount <= 1) {
+      return 'bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 hover:scale-[1.12] transition-transform shadow-[0_0_6px_rgba(6,182,212,0.15)]';
+    }
+    const ratio = count / maxCount;
+    if (ratio <= 0.25) return 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:scale-[1.12] transition-transform hover:shadow-[0_0_8px_rgba(6,182,212,0.25)]';
+    if (ratio <= 0.5) return 'bg-cyan-500/45 text-cyan-200 border border-cyan-500/45 hover:scale-[1.15] transition-transform hover:shadow-[0_0_12px_rgba(6,182,212,0.45)]';
+    if (ratio <= 0.75) return 'bg-cyan-500/75 text-white border border-cyan-400/60 hover:scale-[1.18] transition-transform hover:shadow-[0_0_15px_rgba(34,211,238,0.65)]';
+    return 'bg-cyan-400 text-slate-950 font-bold border border-cyan-200 hover:scale-[1.22] transition-transform shadow-[0_0_18px_rgba(34,211,238,0.85)]';
+  };
+
   return (
     <div className="space-y-6" id="search-insights-dashboard-root">
       
@@ -217,15 +503,27 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
           </p>
         </div>
 
-        {searches.length === 0 && !loading && (
-          <button
-            onClick={seedMockSearches}
-            className="px-3.5 py-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded border border-cyan-500/30 transition-all font-semibold uppercase animate-pulse flex items-center gap-1.5 shrink-0"
-            id="btn-seed-search-telemetry"
-          >
-            ⚡ {isAr ? 'توليد عينة بيانات بحث' : 'Seed Sample Insights Data'}
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {searches.length > 0 && (
+            <button
+              onClick={downloadTelemetryLogs}
+              className="px-3.5 py-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 active:bg-cyan-500/30 rounded border border-cyan-500/30 transition-all font-semibold uppercase flex items-center gap-1.5 cursor-pointer"
+              id="btn-download-search-telemetry"
+            >
+              📥 {isAr ? 'تنزيل القياسات الفورية' : 'Export Logs (.JSON)'}
+            </button>
+          )}
+
+          {searches.length === 0 && !loading && (
+            <button
+              onClick={seedMockSearches}
+              className="px-3.5 py-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded border border-cyan-500/30 transition-all font-semibold uppercase animate-pulse flex items-center gap-1.5"
+              id="btn-seed-search-telemetry"
+            >
+              ⚡ {isAr ? 'توليد عينة بيانات بحث' : 'Seed Sample Insights Data'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Grid of Key Performance Cards */}
@@ -301,6 +599,17 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
               <option value="workflows">⚡ {T('workflows')}</option>
             </select>
 
+            {/* Time filter dropdown */}
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value as any)}
+              className="px-2.5 py-1 bg-slate-900 border border-slate-800 rounded text-[11px] font-mono text-slate-300 focus:outline-none focus:border-cyan-500"
+            >
+              <option value="7d">📅 {isAr ? 'آخر 7 أيام' : 'Last 7 Days'}</option>
+              <option value="30d">📅 {isAr ? 'آخر 30 يوم' : 'Last 30 Days'}</option>
+              <option value="all">📅 {isAr ? 'كل الأوقات' : 'All Time'}</option>
+            </select>
+
             {/* Input method selection button */}
             <div className="flex items-center border border-slate-800 bg-slate-950/80 p-0.5 rounded text-[10px] font-mono">
               {[
@@ -343,66 +652,134 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Chart Block */}
-            <div className="lg:col-span-2 h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="#64748b" 
-                    fontSize={10} 
-                    fontFamily="monospace"
-                    tickLine={false} 
-                  />
-                  <YAxis 
-                    stroke="#64748b" 
-                    fontSize={10} 
-                    fontFamily="monospace"
-                    allowDecimals={false}
-                    tickLine={false} 
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'rgba(255, 255, 255, 0.03)' }}
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-[#0b101f] border border-slate-800 p-2.5 rounded shadow-xl text-[11px] font-mono">
-                            <p className="text-white font-bold mb-1">"{data.name}"</p>
-                            <p className="text-cyan-400">{isAr ? 'إجمالي البحث:' : 'Total Queries:'} <span className="font-bold">{data.count}</span></p>
-                            <p className="text-red-400">{isAr ? 'منها بالصوت:' : 'Voice-triggered:'} <span className="font-bold">{data.voiceCount}</span></p>
-                            <p className={`${
-                              data.trend === 'up' ? 'text-emerald-400' :
-                              data.trend === 'down' ? 'text-rose-400' :
-                              'text-slate-400'
-                            }`}>
-                              {isAr ? 'الاتجاه:' : 'Trend:'}{' '}
-                              <span className="font-bold text-xs">
-                                {data.trend === 'up' ? '▲ (صاعد)' :
-                                 data.trend === 'down' ? '▼ (هابط)' :
-                                 '■ (مستقر)'}
-                              </span>
-                            </p>
-                            <p className="text-slate-500 text-[10px] mt-1 capitalize">Category: {data.scope}</p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, index) => {
-                      // Custom colors per matching search category
-                      let barColor = '#06b6d4'; // listings / default cyan
-                      if (entry.scope === 'leads') barColor = '#ef4444';
-                      if (entry.scope === 'agents') barColor = '#10b981';
-                      if (entry.scope === 'workflows') barColor = '#3b82f6';
-                      return <Cell key={`cell-${index}`} fill={barColor} opacity={0.85} />;
-                    })}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            {/* Chart Block with Keywords Bar Chart & Interactive Time Window Brush Slider */}
+            <div className="lg:col-span-2 flex flex-col gap-4">
+              
+              {/* Keywords Bar Chart (Filters dynamically as user brushes the timeline below) */}
+              <div className="h-52 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 15, right: 15, left: -20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
+                    <XAxis 
+                      dataKey="name" 
+                      stroke="#64748b" 
+                      fontSize={10} 
+                      fontFamily="monospace"
+                      tickLine={false} 
+                    />
+                    <YAxis 
+                      stroke="#64748b" 
+                      fontSize={10} 
+                      fontFamily="monospace"
+                      allowDecimals={false}
+                      tickLine={false} 
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(255, 255, 255, 0.03)' }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-[#0b101f] border border-slate-800 p-2.5 rounded shadow-xl text-[11px] font-mono">
+                              <p className="text-white font-bold mb-1">"{data.name}"</p>
+                              <p className="text-cyan-400">{isAr ? 'إجمالي البحث:' : 'Total Queries:'} <span className="font-bold">{data.count}</span></p>
+                              <p className="text-red-400">{isAr ? 'منها بالصوت:' : 'Voice-triggered:'} <span className="font-bold">{data.voiceCount}</span></p>
+                              <p className={`${
+                                data.trend === 'up' ? 'text-emerald-400' :
+                                data.trend === 'down' ? 'text-rose-400' :
+                                'text-slate-400'
+                              }`}>
+                                {isAr ? 'الاتجاه:' : 'Trend:'}{' '}
+                                <span className="font-bold text-xs">
+                                  {data.trend === 'up' ? '▲ (صاعد)' :
+                                   data.trend === 'down' ? '▼ (هابط)' :
+                                   '■ (مستقر)'}
+                                </span>
+                              </p>
+                              <p className="text-slate-500 text-[10px] mt-1 capitalize">Category: {data.scope}</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {chartData.map((entry, index) => {
+                        // Custom colors per matching search category
+                        let barColor = '#06b6d4'; // listings / default cyan
+                        if (entry.scope === 'leads') barColor = '#ef4444';
+                        if (entry.scope === 'agents') barColor = '#10b981';
+                        if (entry.scope === 'workflows') barColor = '#3b82f6';
+                        return <Cell key={`cell-${index}`} fill={barColor} opacity={0.85} />;
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Interactive Timeline with Recharts Brush component */}
+              <div className="bg-[#050914] border border-slate-800/60 p-3.5 rounded-lg select-none" id="timeline-brush-control-panel">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 mb-2 bg-slate-950/45 px-2.5 py-1.5 rounded border border-slate-900/60">
+                  <span className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                    🕒 {isAr ? "تحليل النطاق الزمني المخصص (انقر واسحب للتحكم)" : "Click & Drag Timeline Brush to Filter"}
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-cyan-400">
+                    {activeTimeWindow ? (
+                      `📅 ${activeTimeWindow.startDate.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${activeTimeWindow.endDate.toLocaleDateString(isAr ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                    ) : (
+                      isAr ? "📅 كامل الفترة الزمنية المفلترة" : "📅 Entire filtered period"
+                    )}
+                  </span>
+                </div>
+
+                <div className="h-20 w-full relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={timelineData} margin={{ top: 5, right: 15, left: -25, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="brushAreaColor" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis 
+                        dataKey="formattedTime" 
+                        stroke="#475569" 
+                        fontSize={8} 
+                        fontFamily="monospace"
+                        tickLine={false} 
+                      />
+                      <YAxis hide />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-[#0b101f] border border-slate-800 px-2 py-1.5 rounded shadow-lg text-[10px] font-mono">
+                                <p className="text-white font-bold">{data.formattedTime}</p>
+                                <p className="text-cyan-400">{isAr ? 'الاستعلامات:' : 'Searches:'} <span className="font-bold">{data.count}</span></p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Area type="monotone" dataKey="count" stroke="#0891b2" strokeWidth={1} fillOpacity={1} fill="url(#brushAreaColor)" />
+                      <Brush 
+                        dataKey="formattedTime" 
+                        height={24} 
+                        stroke="#0891b2"
+                        fill="#050914"
+                        travellerWidth={8}
+                        onChange={(obj) => {
+                          if (obj && typeof obj.startIndex === 'number' && typeof obj.endIndex === 'number') {
+                            setBrushIndices({ start: obj.startIndex, end: obj.endIndex });
+                          }
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             </div>
 
             {/* Keyword Trends Leaderboard */}
@@ -474,6 +851,138 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500/80" /> {T('workflows')}</span>
           </div>
         )}
+      </div>
+
+      {/* Search Peaks Calendar Heatmap Component (Current Week) */}
+      <div className="p-5 bg-[#0a0f1d] border border-slate-800/80 rounded-xl" id="insights-heatmap-card">
+        <div className="border-b border-slate-800/60 pb-4 mb-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h3 className="text-xs font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2 animate-fade-in">
+              ⏱️ {isAr ? "خريطة الحرارة الزمنية لعمليات البحث (الأسبوع الحالي)" : "Weekly Hourly Traffic Heatmap (Current Week)"}
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {isAr 
+                ? `توزيع مكثف للبحث عبر الأوقات اليومية للأسبوع الحالي. إجمالي البحث هذا الأسبوع: ${weeklyTotalSearches} استعلام.`
+                : `Hourly search load distribution for the current week starting Mon ${heatmapData.startOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}. Total: ${weeklyTotalSearches} searches.`}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 uppercase shrink-0 select-none">
+            <span>{isAr ? "شدة الحركة:" : "Traffic Intensity:"}</span>
+            <div className="flex items-center gap-1 bg-slate-950/45 p-1 rounded border border-slate-800">
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#0a0f1d] border border-slate-900" title="0" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-cyan-500/20" title="Low" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-cyan-500/45" title="Medium" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-cyan-500/75" title="High" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400 shadow-[0_0_5px_rgba(34,211,238,0.5)]" title="Peak" />
+            </div>
+          </div>
+        </div>
+
+        {/* Heatmap Grid Wrapper */}
+        <div className="overflow-x-auto select-none scroller-style pb-2">
+          <div className="min-w-[760px] pb-1">
+            {/* Header: Hour labels */}
+            <div className="grid grid-cols-[80px_1fr] gap-2 mb-2">
+              <div className="text-[10px] font-mono text-slate-500 font-bold uppercase flex items-center justify-center">
+                {isAr ? "اليوم" : "Day"}
+              </div>
+              <div className="grid gap-1.5 text-center text-[9px] font-mono text-slate-500 font-bold" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                {Array.from({ length: 24 }).map((_, h) => (
+                  <div key={h} className="truncate" title={formatHourLabel(h)}>
+                    {h.toString().padStart(2, '0')}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Rows of days */}
+            <div className="space-y-1.5">
+              {daysFullLabels.map((dayName, dayIndex) => (
+                <div key={dayName} className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                  {/* Row Header (Day name) */}
+                  <div className="text-[10px] font-bold text-slate-300 font-mono truncate bg-slate-900/40 px-2 py-1.5 rounded border border-slate-800/45 text-center">
+                    {daysLabels[dayIndex]}
+                  </div>
+
+                  {/* 24 hour blocks */}
+                  <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                    {Array.from({ length: 24 }).map((_, hour) => {
+                      const count = heatmapData.matrix[dayIndex][hour];
+                      const queries = heatmapData.queriesMatrix[dayIndex][hour];
+                      const colorClass = getCellColorClass(count, heatmapData.maxCountInMatrix);
+                      
+                      return (
+                        <div
+                          key={hour}
+                          onMouseEnter={() => setHoveredHeatmapCell({ dayIndex, hour, count, queries })}
+                          onMouseLeave={() => setHoveredHeatmapCell(null)}
+                          className={`h-7 rounded border cursor-pointer transition-all duration-150 flex items-center justify-center text-[10px] font-bold font-mono ${colorClass}`}
+                          title={`${dayName} ${formatHourLabel(hour)}: ${count} searches`}
+                        >
+                          {count > 0 ? count : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Detail Card for selected block */}
+        <div className="mt-5 p-4 bg-slate-950/60 border border-slate-800/80 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4 min-h-[64px] transition-all">
+          {hoveredHeatmapCell ? (
+            <>
+              <div>
+                <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-400 font-bold block">
+                  📍 {isAr ? "تفاصيل الساعة المحددة" : "HOURLY TELEMETRY DETAIL"}
+                </span>
+                <p className="text-xs text-slate-100 font-semibold mt-1">
+                  {daysFullLabels[hoveredHeatmapCell.dayIndex]} • {formatHourLabel(hoveredHeatmapCell.hour)}
+                </p>
+              </div>
+
+              <div className="flex-1 md:max-w-md">
+                <span className="text-[9px] uppercase font-mono text-slate-500 block">
+                  {isAr ? "الاستعلامات المسجلة:" : "Logged Searches in this slot:"}
+                </span>
+                {hoveredHeatmapCell.queries.length > 0 ? (
+                  <div className="flex flex-wrap gap-1 mt-1 max-h-12 overflow-y-auto pr-1">
+                    {Array.from(new Set(hoveredHeatmapCell.queries)).map((q, idx) => (
+                      <span key={idx} className="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-mono px-2 py-0.5 rounded">
+                        "{q}"
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-500 font-mono italic block mt-1">
+                    {isAr ? "لا توجد حركات بحث نشطة في هذه الساعة" : "No active queries detected."}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-right shrink-0 bg-cyan-950/40 border border-cyan-500/20 px-3 py-1.5 rounded font-mono">
+                <span className="text-[9px] uppercase tracking-wider text-cyan-400 font-bold block">
+                  {isAr ? "العدد:" : "LOAD:"}
+                </span>
+                <span className="text-sm font-black text-white">
+                  {hoveredHeatmapCell.count} {isAr ? "عمليات" : "searches"}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="w-full text-center py-1 text-slate-500 font-mono text-[11px] flex items-center justify-center gap-2">
+              <span>🎯</span>
+              <span>
+                {isAr 
+                  ? "مرر مؤشر الفأرة فوق أي فترات زمنية لعرض الكلمات والمقاييس النشطة." 
+                  : "Hover over any hourly cell in the matrix to inspect active searches and custom telemetry."}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Grid: Live Activity Stream and Distribution */}

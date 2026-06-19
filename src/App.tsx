@@ -27,6 +27,7 @@ import AutomationToolsPage from './components/AutomationToolsPage';
 import EasyListingPage from './components/EasyListingPage';
 import DataSyncHubPage from './components/DataSyncHubPage';
 import ClientHub from './components/ClientHub';
+import SearchInsightsPage from './components/SearchInsightsPage';
 
 import GlobalProgressTracker from './components/GlobalProgressTracker';
 
@@ -482,6 +483,8 @@ export default function App() {
         return <AutomationToolsPage />;
       case 'dataSync':
         return <DataSyncHubPage />;
+      case 'searchInsights':
+        return <SearchInsightsPage T={T} isAr={isAr} />;
       default:
         return <OverviewPage T={T} />;
     }

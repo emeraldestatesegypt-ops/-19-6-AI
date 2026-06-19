@@ -190,7 +190,7 @@ export default function EasyListingPage() {
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newImages = Array.from(e.target.files).map(file => URL.createObjectURL(file));
+      const newImages = Array.from(e.target.files).map(file => URL.createObjectURL(file as any));
       setImages(prev => [...prev, ...newImages]);
     }
   };

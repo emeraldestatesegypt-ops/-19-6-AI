@@ -71,7 +71,7 @@ export default function ListingsHubPage({ T, searchQuery = '' }: ListingsHubPage
     try {
       await Promise.all(
         Array.from(selectedIds).map((id) =>
-          updateDoc(doc(db, 'listings', id), { status, updatedAt: serverTimestamp() })
+          updateDoc(doc(db, 'listings', id as string), { status, updatedAt: serverTimestamp() })
         )
       );
       setSelectedIds(new Set());
@@ -160,7 +160,7 @@ export default function ListingsHubPage({ T, searchQuery = '' }: ListingsHubPage
       setIsModalOpen(false);
     } catch (err) {
       setFormError('Failed to save listing.');
-      handleFirestoreError(err, editingId ? OperationType.UPDATE : OperationType.ADD, 'listings');
+      handleFirestoreError(err, editingId ? OperationType.UPDATE : OperationType.CREATE, 'listings');
     }
   };
 
