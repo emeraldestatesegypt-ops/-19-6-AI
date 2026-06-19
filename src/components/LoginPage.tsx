@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+import {
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth } from '../firebase';
+import { api } from '../lib/apiClient';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -27,29 +27,9 @@ export default function LoginPage({ onLoginSuccess, isAdminUser, currentUser, lo
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [userDbRecord, setUserDbRecord] = useState<any>(null);
-  const [fetchingRecord, setFetchingRecord] = useState(false);
 
-  React.useEffect(() => {
-    if (!currentUser) {
-      setUserDbRecord(null);
-      return;
-    }
-    setFetchingRecord(true);
-    const unsub = onSnapshot(doc(db, 'admins', currentUser.uid), (snap) => {
-      if (snap.exists()) {
-        setUserDbRecord(snap.data());
-      } else {
-        setUserDbRecord(null);
-      }
-      setFetchingRecord(false);
-    }, (err) => {
-      console.error("Error subscribing to users registry:", err);
-      setFetchingRecord(false);
-    });
-    return () => unsub();
-  }, [currentUser]);
-
+  // Admin access is granted via the backend's users/{uid}.role doc (see Settings → Admin Control),
+  // not a self-service request here — App.tsx's onAuthStateChanged calls /api/admin/auth/verify.
   const handleGoogleLogin = async () => {
     setAuthLoading(true);
     setErrorMsg(null);
@@ -57,25 +37,7 @@ export default function LoginPage({ onLoginSuccess, isAdminUser, currentUser, lo
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-      
-      const emailLower = user.email?.toLowerCase();
-      const isBootstrapped = emailLower === 'a.fawzy8866@gmail.com' || emailLower === 'emeraldestatesegypt@gmail.com';
-      
-      const userRef = doc(db, 'admins', user.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          email: user.email || '',
-          role: isBootstrapped ? 'Superadmin' : 'Admin',
-          status: isBootstrapped ? 'approved' : 'pending',
-          createdAt: new Date()
-        });
-        if (!isBootstrapped) {
-          setInfoMsg("Google sign-in completed. Your admin registration request is logged and awaiting Superadmin approval.");
-        }
-      }
+      await signInWithPopup(auth, provider);
       onLoginSuccess();
     } catch (err: any) {
       console.error(err);
@@ -105,19 +67,9 @@ export default function LoginPage({ onLoginSuccess, isAdminUser, currentUser, lo
           throw new Error("Passwords do not match.");
         }
         
-        // Create user
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+        await createUserWithEmailAndPassword(auth, email, password);
 
-        // Register as admin record in Firestore
-        await setDoc(doc(db, 'admins', user.uid), {
-          email: user.email || '',
-          role: 'Admin',
-          status: 'pending',
-          createdAt: new Date()
-        });
-
-        setInfoMsg("Registration completed. Your email registration is logged and awaiting manual Superadmin approval.");
+        setInfoMsg("Account created. Ask an existing admin to grant you access from Settings → Admin Control (they'll need your Firebase UID).");
         setActiveMode('signin');
       } else {
         // Sign In
@@ -214,47 +166,13 @@ export default function LoginPage({ onLoginSuccess, isAdminUser, currentUser, lo
               
               {!isAdminUser && (
                 <div className="mt-4 p-3 bg-red-950/40 border border-red-500/20 rounded-lg">
-                  {userDbRecord?.status === 'pending' ? (
-                    <>
-                      <p className="text-xs text-amber-400 font-medium flex items-center gap-1">
-                        ⏳ Registration Pending Approval
-                      </p>
-                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                        Your admin registration request is currently under review by a Superadmin. Please contact <strong className="text-cyan-400">emeraldestatesegypt@gmail.com</strong> or your system administrator to approve access for your email.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs text-red-400 font-medium font-sans">
-                        ⚠️ Access Restricted
-                      </p>
-                      <p className="text-[11px] text-red-200 mt-1 leading-relaxed font-sans">
-                        Account is not currently registered inside the active Security Schema. Direct access requires a whitelisted registry profile.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            setAuthLoading(true);
-                            await setDoc(doc(db, 'admins', currentUser.uid), {
-                              email: currentUser.email || '',
-                              role: 'Admin',
-                              status: 'pending',
-                              createdAt: new Date()
-                            });
-                            setInfoMsg("Access request filed immediately! Please wait for Superadmin approval.");
-                          } catch (e: any) {
-                            setErrorMsg("Failed to file a registration request: " + e.message);
-                          } finally {
-                            setAuthLoading(false);
-                          }
-                        }}
-                        className="mt-2 text-xs text-cyan-400 hover:text-cyan-300 hover:underline font-semibold cursor-pointer"
-                      >
-                        File Access Request 📨
-                      </button>
-                    </>
-                  )}
+                  <p className="text-xs text-red-400 font-medium font-sans">
+                    ⚠️ Access Restricted
+                  </p>
+                  <p className="text-[11px] text-red-200 mt-1 leading-relaxed font-sans">
+                    This account is not registered as an admin on the backend. Ask an existing admin to grant you access from Settings → Admin Control — they'll need your Firebase UID (
+                    <span className="select-all font-mono">{currentUser.uid}</span>) and email.
+                  </p>
                 </div>
               )}
             </div>

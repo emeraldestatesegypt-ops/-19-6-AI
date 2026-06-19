@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { onSnapshot, doc as fireDoc, getDoc as getFireDoc, addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection } from 'firebase/firestore';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { SlidersHorizontal, Mic } from 'lucide-react';
-import { auth, db, createSierraNotification, handleFirestoreError, OperationType } from './firebase';
+import { auth, db, createSierraNotification } from './firebase';
+import { api } from './lib/apiClient';
 import { seedFirestore } from './seed';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -420,30 +421,20 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchQuery, searchScope, currentUser]);
 
-  // Auth changes listener
+  // Auth changes listener — admin status now comes from the backend's
+  // users/{uid}.role check (verifyAdminRequest), not a local Firestore lookup.
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        // Enforce verified emails admin rules checking:
-        const emailLower = user.email?.toLowerCase();
-        const isBootstrapped = emailLower === 'a.fawzy8866@gmail.com' || emailLower === 'emeraldestatesegypt@gmail.com';
-        
-        let hasRegisterDoc = false;
+        let passesAdminRule = false;
         try {
-          const admSnap = await getFireDoc(fireDoc(db, 'admins', user.uid));
-          if (admSnap.exists()) {
-            const data = admSnap.data();
-            if (data?.status !== 'pending') {
-              hasRegisterDoc = true;
-            }
-          }
+          const result = await api.get<{ isAdmin: boolean }>('/api/admin/auth/verify');
+          passesAdminRule = !!result.isAdmin;
         } catch (e) {
-          console.warn("Admins directory check returned: ", e);
-          // Do not throw handleFirestoreError here to prevent bubbling and breaking the boot block
+          console.warn('Admin verification check failed:', e);
         }
 
-        const passesAdminRule = isBootstrapped || hasRegisterDoc;
         setIsAdminUser(passesAdminRule);
 
         if (passesAdminRule) {

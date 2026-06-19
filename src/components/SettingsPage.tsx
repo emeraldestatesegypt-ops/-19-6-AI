@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, setDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, createSierraNotification } from '../firebase';
+import { createSierraNotification } from '../firebase';
+import { api } from '../lib/apiClient';
 import { AdminUser } from '../types';
+
+const ROLE_TO_BACKEND: Record<'Admin' | 'Superadmin', string> = { Admin: 'admin', Superadmin: 'superadmin' };
+const BACKEND_TO_ROLE: Record<string, 'Admin' | 'Superadmin'> = { admin: 'Admin', superadmin: 'Superadmin' };
 
 interface SettingsPageProps {
   T: (key: string) => string;
@@ -24,39 +27,41 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
 
   // New admin form input fields
   const [newUid, setNewUid] = useState('');
+  const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<'Admin' | 'Superadmin'>('Admin');
   const [actionLoading, setActionLoading] = useState(false);
 
-  const approvedAdmins = admins.filter(a => a.status !== 'pending');
-  const pendingRequests = admins.filter(a => a.status === 'pending');
+  // No self-service "pending" request queue in the unified backend model — an existing
+  // admin must add new operators directly via this form (see ARCHITECTURE_INTEGRATION.md).
+  const approvedAdmins = admins;
+  const pendingRequests: AdminUser[] = [];
+
+  const refreshAdmins = async () => {
+    try {
+      const { team } = await api.get<{ team: any[] }>('/api/admin/team');
+      setAdmins(
+        team
+          .filter((u) => u.role === 'admin' || u.role === 'superadmin')
+          .map((u) => ({
+            id: u.id,
+            email: u.email || '',
+            role: BACKEND_TO_ROLE[u.role] || 'Admin',
+            status: 'approved',
+            createdAt: u.createdAt ? new Date(u.createdAt) : new Date(),
+          }))
+      );
+    } catch (err) {
+      console.error('Failed to fetch admin team:', err);
+    } finally {
+      setLoadingAdmins(false);
+    }
+  };
 
   useEffect(() => {
-    // Listen to real-time updates in the 'admins' directory
-    const unsub = onSnapshot(
-      collection(db, 'admins'),
-      (snap) => {
-        const list: AdminUser[] = [];
-        snap.forEach((doc) => {
-          const d = doc.data();
-          list.push({
-            id: doc.id,
-            email: d.email || '',
-            role: d.role || 'Admin',
-            status: d.status || 'approved',
-            createdAt: d.createdAt?.toDate ? d.createdAt.toDate() : new Date(),
-          });
-        });
-        setAdmins(list);
-        setLoadingAdmins(false);
-      },
-      (err) => {
-        console.error("Admins subscription security limits encountered:", err);
-        setLoadingAdmins(false);
-      }
-    );
-
-    return () => unsub();
+    refreshAdmins();
+    const interval = setInterval(refreshAdmins, 20000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleSave = () => {
@@ -80,11 +85,13 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
 
     setActionLoading(true);
     try {
-      await setDoc(doc(db, 'admins', newUid.trim()), {
+      await api.post('/api/admin/team', {
+        id: newUid.trim(),
+        name: newName.trim() || newEmail.trim(),
         email: newEmail.trim().toLowerCase(),
-        role: newRole,
-        createdAt: serverTimestamp(),
+        role: ROLE_TO_BACKEND[newRole],
       });
+      await refreshAdmins();
 
       await createSierraNotification(
         'system',
@@ -96,10 +103,12 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
 
       // Clear form inputs
       setNewUid('');
+      setNewName('');
       setNewEmail('');
       setNewRole('Admin');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `admins/${newUid}`);
+      console.error('Failed to register admin:', err);
+      alert(err instanceof Error ? err.message : 'Failed to register admin.');
     } finally {
       setActionLoading(false);
     }
@@ -112,14 +121,15 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
       return;
     }
 
-    const confirmMsg = isAr 
-      ? `هل أنت متأكد من رغبتك في إلغاء صلاحيات المشرف بالبريد الإلكتروني ${email}؟` 
+    const confirmMsg = isAr
+      ? `هل أنت متأكد من رغبتك في إلغاء صلاحيات المشرف بالبريد الإلكتروني ${email}؟`
       : `Are you sure you want to revoke admin credentials for ${email}?`;
-    
+
     if (!confirm(confirmMsg)) return;
 
     try {
-      await deleteDoc(doc(db, 'admins', id));
+      await api.delete(`/api/admin/team?id=${encodeURIComponent(id)}`);
+      await refreshAdmins();
 
       await createSierraNotification(
         'system',
@@ -129,53 +139,7 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
         `تم بنجاح سحب صلاحيات لوحة المشرفين عن الحساب ذو البريد ${email}.`
       );
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `admins/${id}`);
-    }
-  };
-
-  const handleApproveAdmin = async (id: string, email: string) => {
-    try {
-      setActionLoading(true);
-      await setDoc(doc(db, 'admins', id), {
-        status: 'approved'
-      }, { merge: true });
-
-      await createSierraNotification(
-        'system',
-        `Admin Access Approved`,
-        `Successfully approved registration request for ${email}.`,
-        `تم قبول طلب المشرف`,
-        `تم قبول طلب التسجيل بنجاح للحساب ذو البريد ${email}.`
-      );
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `admins/${id}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDenyAdmin = async (id: string, email: string) => {
-    const confirmMsg = isAr 
-      ? `هل أنت متأكد من رغبتك في رفض وإزالة طلب الدخول للحساب ${email}؟` 
-      : `Are you sure you want to deny and remove the access request for ${email}?`;
-    
-    if (!confirm(confirmMsg)) return;
-
-    try {
-      setActionLoading(true);
-      await deleteDoc(doc(db, 'admins', id));
-
-      await createSierraNotification(
-        'system',
-        `Admin Request Rejected`,
-        `Rejected and deleted registration request for ${email}.`,
-        `تم رفض طلب دخول المشرف`,
-        `تم بنجاح رفض وإلغاء طلب الدخول للحساب ذو البريد ${email}.`
-      );
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `admins/${id}`);
-    } finally {
-      setActionLoading(false);
+      console.error(`Failed to revoke admin ${id}:`, err);
     }
   };
 
@@ -277,49 +241,6 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
           </div>
         </div>
       </div>
-
-      {/* Pending Access Requests Center */}
-      {pendingRequests.length > 0 && (
-        <div className="bg-amber-950/20 border border-amber-500/25 rounded-xl overflow-hidden shadow-xl animate-fade-in mb-6">
-          <div className="px-5 py-4 border-b border-amber-500/25 bg-amber-950/40 flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-amber-400 font-bold select-none flex items-center gap-1.5 animate-pulse">
-              🔔 {isAr ? 'طلبات الانضمام قيد الانتظار' : 'Pending Access Requests Waiting Your Approval'}
-            </span>
-            <span className="px-2 py-0.5 text-[9px] rounded-full font-mono bg-amber-500 text-black font-bold">
-              {pendingRequests.length} {isAr ? 'طلبات معلقة' : 'Pending'}
-            </span>
-          </div>
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pendingRequests.map((req) => (
-              <div key={req.id} className="bg-slate-950 border border-amber-500/20 hover:border-amber-500/40 rounded-xl p-4 flex flex-col justify-between transition-all duration-200">
-                <div className="min-w-0 mb-3 font-sans">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                    <span className="font-bold text-xs text-white truncate">{req.email}</span>
-                  </div>
-                  <p className="font-mono text-[9px] text-slate-500 select-all truncate">UID: {req.id}</p>
-                  <p className="font-mono text-[9px] text-slate-550 mt-1">Requested: {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'Just now'}</p>
-                </div>
-                
-                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-900 font-sans">
-                  <button
-                    onClick={() => handleApproveAdmin(req.id, req.email)}
-                    className="flex-1 py-1 text-[10px] font-bold font-mono bg-emerald-500 hover:bg-emerald-400 text-black rounded transition cursor-pointer text-center"
-                  >
-                    {isAr ? 'موافقة وتفعيل' : 'Approve Operator'}
-                  </button>
-                  <button
-                    onClick={() => handleDenyAdmin(req.id, req.email)}
-                    className="py-1 px-3 text-[10px] font-bold font-mono bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 rounded transition cursor-pointer text-center"
-                  >
-                    {isAr ? 'رفض' : 'Deny'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Real-time whitelist UI and list */}
@@ -446,6 +367,21 @@ export default function SettingsPage({ T, isAr = false, currentUser }: SettingsP
                   placeholder="e.g. jB7W2pS0rXa9gK..."
                   className="w-full bg-slate-950 border border-slate-850 focus:border-cyan-500/50 rounded px-4 py-2 text-xs text-white font-mono placeholder:text-slate-700 outline-none transition duration-150"
                   id="admin-new-uid-input"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[8.5px] font-mono uppercase tracking-widest text-cyan-400 mb-1.5 select-none">
+                  {isAr ? 'الاسم' : 'Name'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Mona Hassan"
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-cyan-500/50 rounded px-4 py-2 text-xs text-white font-mono placeholder:text-slate-700 outline-none transition duration-150"
+                  id="admin-new-name-input"
                 />
               </div>
 
