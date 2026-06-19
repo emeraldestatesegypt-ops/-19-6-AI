@@ -1,4 +1,4 @@
-import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, setDoc } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from './firebase';
 
 const INITIAL_LEADS = [
@@ -218,5 +218,48 @@ const INITIAL_LISTINGS = [
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'listings');
+  }
+
+  // 5. System Logs
+  try {
+    const logsSnap = await getDocs(collection(db, 'system_logs'));
+    if (logsSnap.empty) {
+      console.log('Seeding system logs...');
+      const batch = writeBatch(db);
+      
+      const logs = [
+        { action: "Lead Ahmed Al-Rashid assigned to Sierra Bot", category: "lead", operator: "Sierra Bot", timestamp: new Date(Date.now() - 5 * 60000) },
+        { action: "New listing added: 3-Bed Lakeview Townhouse, Hyde Park", category: "listing", operator: "The Curator", timestamp: new Date(Date.now() - 15 * 60000) },
+        { action: "Workflow WhatsApp Scraper Cron (30m) completed successfully", category: "workflow", operator: "System Daemon", timestamp: new Date(Date.now() - 28 * 60000) },
+        { action: "AI Matched Sara Mohamed to 3-Bed Mivida Rental", category: "lead", operator: "Leila / Lola", timestamp: new Date(Date.now() - 45 * 60000) },
+        { action: "AVM pricing update for Mountain View Compound initiated", category: "system", operator: "The Scribe", timestamp: new Date(Date.now() - 120 * 60000) },
+        { action: "User emeraldestatesegypt@gmail.com signed in to Sierra Core Panel", category: "system", operator: "Security Service", timestamp: new Date(Date.now() - 240 * 60000) }
+      ];
+
+      logs.forEach((log, i) => {
+        const docRef = doc(db, 'system_logs', `log-${i + 1}`);
+        batch.set(docRef, log);
+      });
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'system_logs');
+  }
+
+  // 6. System Health
+  try {
+    const healthSnap = await getDocs(collection(db, 'system_health'));
+    if (healthSnap.empty) {
+      console.log('Seeding system health...');
+      const docRef = doc(db, 'system_health', 'current_status');
+      await setDoc(docRef, {
+        dbLatency: 12,
+        authUptime: 99.98,
+        storageQuota: 24,
+        updatedAt: new Date()
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'system_health');
   }
 }

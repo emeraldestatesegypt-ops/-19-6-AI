@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, query, where, QueryConstraint } from 'firebase/firestore';
 import { db } from '../firebase';
 import { SearchLog } from '../types';
 import { motion } from 'motion/react';
@@ -28,6 +28,11 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
   const [searches, setSearches] = useState<SearchLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  
+  // DB Query Constraints
+  const [dbUserId, setDbUserId] = useState<string>('');
+  const [dbDateStart, setDbDateStart] = useState<string>('');
+  const [dbDateEnd, setDbDateEnd] = useState<string>('');
   
   // Local UI filters
   const [scopeFilter, setScopeFilter] = useState<'all' | 'leads' | 'listings' | 'agents' | 'workflows'>('all');
@@ -66,8 +71,26 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
 
   // Real-time listener for the searches collection
   useEffect(() => {
+    setLoading(true);
     const searchesCol = collection(db, 'searches');
-    const unsub = onSnapshot(searchesCol, (snapshot) => {
+
+    const constraints: QueryConstraint[] = [];
+    if (dbUserId.trim()) {
+      constraints.push(where('userId', '==', dbUserId.trim()));
+    }
+    if (dbDateStart) {
+      constraints.push(where('timestamp', '>=', new Date(dbDateStart)));
+    }
+    if (dbDateEnd) {
+      // Set boundary to end of chosen day
+      const ed = new Date(dbDateEnd);
+      ed.setHours(23, 59, 59, 999);
+      constraints.push(where('timestamp', '<=', ed));
+    }
+
+    const finalQuery = constraints.length > 0 ? query(searchesCol, ...constraints) : searchesCol;
+
+    const unsub = onSnapshot(finalQuery, (snapshot) => {
       const logs: SearchLog[] = [];
       snapshot.forEach((doc) => {
         const d = doc.data();
@@ -91,7 +114,7 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
     });
 
     return () => unsub();
-  }, []);
+  }, [dbUserId, dbDateStart, dbDateEnd]);
 
   // Quick Seed helper to give users a rich interactive experience right out of the box
   const seedMockSearches = async () => {
@@ -476,6 +499,21 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
     return { startDate, endDate };
   }, [brushIndices, timelineData]);
 
+  // Threshold Monitor: Check for > 50 searches in a 1-minute window
+  const hasTrafficAnomaly = useMemo(() => {
+    // We check if the time difference between i and i+50 within searches is <= 60000 ms
+    // The searches array is sorted descending (newest first)
+    if (searches.length <= 50) return false;
+    for (let i = 0; i <= searches.length - 51; i++) {
+        const timeNewest = searches[i].timestamp.getTime();
+        const timeOldest = searches[i + 50].timestamp.getTime();
+        if (timeNewest - timeOldest <= 60000) {
+           return true;
+        }
+    }
+    return false;
+  }, [searches]);
+
   // Filter logs with base constraints + the dynamic brush time range
   const filteredSearches = useMemo(() => {
     const now = new Date();
@@ -769,6 +807,75 @@ export default function SearchInsightsPage({ T, isAr = false }: SearchInsightsPa
           <div className="absolute right-4 bottom-4 text-3xl font-bold opacity-10 select-none">🏢</div>
         </div>
       </div>
+
+      {/* Database Filter Level */}
+      <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl flex flex-wrap items-end gap-4" id="db-query-toolbar">
+        <div>
+          <label className="block text-[10px] font-mono text-slate-400 mb-1 uppercase">
+            {isAr ? "معرف المستخدم (UID)" : "User ID Constraint"}
+          </label>
+          <input
+            type="text"
+            placeholder={isAr ? "تصفية بواسطة User ID..." : "Filter by User ID..."}
+            value={dbUserId}
+            onChange={e => setDbUserId(e.target.value)}
+            className="px-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded text-xs font-mono text-white w-48"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-mono text-slate-400 mb-1 uppercase">
+            {isAr ? "من تاريخ" : "Start Date"}
+          </label>
+          <input
+            type="date"
+            value={dbDateStart}
+            onChange={e => setDbDateStart(e.target.value)}
+            className="px-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded text-xs font-mono text-white w-36"
+            style={{ colorScheme: 'dark' }}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-mono text-slate-400 mb-1 uppercase">
+            {isAr ? "إلى تاريخ" : "End Date"}
+          </label>
+          <input
+            type="date"
+            value={dbDateEnd}
+            onChange={e => setDbDateEnd(e.target.value)}
+            className="px-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded text-xs font-mono text-white w-36"
+            style={{ colorScheme: 'dark' }}
+          />
+        </div>
+        <div className="text-[10px] font-mono text-cyan-500/70 py-1.5 px-3 bg-cyan-500/10 border border-cyan-500/20 rounded ml-auto">
+          {isAr ? "تصفية على مستوى قاعدة البيانات Firestore" : "Firestore Server-Side Querying"}
+        </div>
+      </div>
+
+      {hasTrafficAnomaly && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-4"
+        >
+          <div className="p-2 bg-rose-500/20 rounded-full text-rose-400">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-rose-400">
+              {isAr ? "تحذير: حركة بحث غير عادية" : "Warning: High Search Traffic Anomaly detected"}
+            </h4>
+            <p className="text-xs text-rose-400/80 mt-1">
+              {isAr
+                ? "تم اكتشاف أكثر من 50 عملية بحث في نافذة زمنية مدتها دقيقة واحدة. قد يشير هذا إلى نشاط مكثف."
+                : "> 50 searches were performed within a rolling 1-minute window in the active query criteria."}
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Main Bar Chart Panel */}
       <div className="p-5 bg-[#0a0f1d] border border-slate-800/80 rounded-xl" id="insights-charts-card">

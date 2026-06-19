@@ -117,6 +117,32 @@
         "isVoice": { "type": "boolean" }
       },
       "required": ["query", "scope", "timestamp"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "A system log or audit trail entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "category": { "type": "string" },
+        "operator": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "category", "operator", "timestamp"]
+    },
+    "SystemHealth": {
+      "title": "SystemHealth",
+      "description": "Real-time system health metrics",
+      "type": "object",
+      "properties": {
+        "dbLatency": { "type": "integer", "description": "Database query latency in ms" },
+        "authUptime": { "type": "number", "description": "Uptime of authentication services in %" },
+        "storageQuota": { "type": "integer", "description": "Used storage percentage" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dbLatency", "authUptime", "storageQuota", "updatedAt"]
     }
   },
   "firestore": {
@@ -151,6 +177,14 @@
     "/searches/{searchId}": {
       "schema": "SearchLog",
       "description": "Query telemetry logging for service metrics"
+    },
+    "/system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Chronological audit logs of system activity"
+    },
+    "/system_health/{metricId}": {
+      "schema": "SystemHealth",
+      "description": "Real-time metrics for system components"
     }
   }
 }

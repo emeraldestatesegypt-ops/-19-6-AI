@@ -5,6 +5,7 @@ import { Lead, Listing, Agent, SearchLog } from '../types';
 import { ComposedChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import DashboardWidgets from './DashboardWidgets';
 import AgentLeaderboard from './AgentLeaderboard';
+import ActivityFeed from './ActivityFeed';
 
 const CHART_DATA = [
   { month: 'Jan', deals: 35, revenue: 1.1 },
@@ -403,9 +404,9 @@ export default function OverviewPage({ T }: OverviewPageProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
         {/* Recharts Dual-Axis Visualization */}
-        <div className="bg-[#0a0f1d] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+        <div className="lg:col-span-2 bg-[#0a0f1d] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
           <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/40">
             <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400 font-bold select-none">
               {T('pipelineAndRevenueTrends') || 'PIPELINE & REVENUE TRENDS'}
@@ -433,8 +434,15 @@ export default function OverviewPage({ T }: OverviewPageProps) {
           </div>
         </div>
 
+        {/* System Logs Activity Feed */}
+        <div className="lg:col-span-1">
+          <ActivityFeed />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 mt-6">
         {/* Popular Search Terms Chart */}
-        <div className="bg-[#0a0f1d] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+        <div className="bg-[#0a0f1d] border border-slate-800 rounded-xl overflow-hidden shadow-xl animate-fade-in-up">
           <div className="px-5 py-3 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
             <span className="font-mono text-[10px] uppercase tracking-wider text-cyan-400 font-bold select-none">
               {searchRange === '7d' 

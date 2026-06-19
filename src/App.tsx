@@ -30,6 +30,7 @@ import ClientHub from './components/ClientHub';
 import SearchInsightsPage from './components/SearchInsightsPage';
 
 import GlobalProgressTracker from './components/GlobalProgressTracker';
+import AdminHealthMonitor from './components/AdminHealthMonitor';
 
 // Text translations conforming to standard arabic/english requirements
 const TRANSLATIONS: Record<string, Record<string, string>> = {
@@ -544,6 +545,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 slide-in-top">
+              <AdminHealthMonitor />
               <GlobalProgressTracker />
               
               {/* Voice Command Button */}

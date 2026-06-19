@@ -63,5 +63,15 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
+
+    match /system_logs/{logId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /system_health/{metricId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }
