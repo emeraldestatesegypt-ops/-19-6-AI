@@ -206,7 +206,7 @@ export default function FollowupsPage({ T, isAr = false }: FollowupsPageProps) {
         {loading ? (
           <div className="p-8 text-center text-slate-500">
             <RefreshCw className="animate-spin mx-auto mb-2" size={20} />
-            {isAr ? 'جاري التحميل...' : 'Loading...'}
+            {isAr ? 'جارٍ التحميل…' : 'Loading...'}
           </div>
         ) : followups.length === 0 ? (
           <div className="p-8 text-center text-slate-500">

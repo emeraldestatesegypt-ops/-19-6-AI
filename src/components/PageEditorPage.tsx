@@ -166,7 +166,7 @@ export default function PageEditorPage({ T, isAr = false }: PageEditorPageProps)
         {loading ? (
           <div className="col-span-full p-8 text-center text-slate-500">
             <RefreshCw className="animate-spin mx-auto mb-2" size={20} />
-            {isAr ? 'جاري التحميل...' : 'Loading...'}
+            {isAr ? 'جارٍ التحميل…' : 'Loading...'}
           </div>
         ) : pages.length === 0 ? (
           <div className="col-span-full p-8 text-center text-slate-500">
