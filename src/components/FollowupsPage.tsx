@@ -44,18 +44,18 @@ const TYPE_COLORS = {
 };
 
 const PRIORITY_COLORS = {
-  low: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-  medium: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  high: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  urgent: 'bg-red-500/20 text-red-300 border-red-500/30',
+  low:    'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 ring-slate-200 dark:ring-slate-700',
+  medium: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 ring-blue-200 dark:ring-blue-900/50',
+  high:   'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 ring-amber-200 dark:ring-amber-900/50',
+  urgent: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 ring-red-200 dark:ring-red-900/50',
 };
 
 const STATUS_COLORS = {
-  pending: 'bg-slate-500/20 text-slate-300',
-  in_progress: 'bg-blue-500/20 text-blue-300',
-  completed: 'bg-emerald-500/20 text-emerald-300',
-  cancelled: 'bg-slate-700/50 text-slate-400 line-through',
-  overdue: 'bg-red-500/20 text-red-300',
+  pending:    'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400',
+  in_progress:'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400',
+  completed:  'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400',
+  cancelled:  'bg-slate-100 dark:bg-slate-800/50 text-slate-400 line-through',
+  overdue:    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400',
 };
 
 export default function FollowupsPage({ T, isAr = false }: FollowupsPageProps) {
@@ -146,14 +146,14 @@ export default function FollowupsPage({ T, isAr = false }: FollowupsPageProps) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight">
             {isAr ? 'المتابعات' : 'Follow-ups'}
           </h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">
+          <p className="text-[13px] text-slate-500 mt-1">
             {isAr ? 'إدارة مهام المتابعة مع العملاء' : 'Manage follow-up tasks with leads'}
           </p>
         </div>
@@ -200,15 +200,15 @@ export default function FollowupsPage({ T, isAr = false }: FollowupsPageProps) {
       )}
 
       {/* Follow-ups list */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {loading ? (
-          <div className="p-12 text-center text-slate-500">
-            <RefreshCw className="animate-spin mx-auto mb-2 text-slate-400" size={20} strokeWidth={1.75} />
+          <div className="p-16 text-center text-slate-500">
+            <RefreshCw className="animate-spin mx-auto mb-3 text-slate-400" size={20} strokeWidth={1.75} />
             <p className="text-[13px]">{isAr ? 'جارٍ التحميل…' : 'Loading…'}</p>
           </div>
         ) : followups.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            <Calendar className="mx-auto mb-2 text-slate-400" size={32} strokeWidth={1.5} />
+          <div className="p-16 text-center text-slate-500">
+            <Calendar className="mx-auto mb-3 text-slate-300 dark:text-slate-700" size={36} strokeWidth={1.25} />
             <p className="text-[13px]">{isAr ? 'لا توجد متابعات' : 'No follow-ups found'}</p>
           </div>
         ) : (
@@ -222,59 +222,66 @@ export default function FollowupsPage({ T, isAr = false }: FollowupsPageProps) {
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18 }}
-                className={`bg-white dark:bg-slate-900 border rounded-lg p-3.5 flex items-start gap-3 transition-colors ${
+                className={`group bg-white dark:bg-slate-900 border rounded-xl p-4 flex items-start gap-4 transition-colors ${
                   isOverdue
-                    ? 'border-red-200 dark:border-red-900/50'
+                    ? 'border-red-200 dark:border-red-900/40'
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                <div className={`mt-0.5 p-1.5 rounded-md bg-slate-100 dark:bg-slate-800 ${TYPE_COLORS[f.type]}`}>
-                  <Icon size={16} strokeWidth={1.75} />
+                {/* Type icon — single visual anchor on the left */}
+                <div className={`shrink-0 w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center ${TYPE_COLORS[f.type]}`}>
+                  <Icon size={18} strokeWidth={1.75} />
                 </div>
 
+                {/* Main content — title + meta on separate lines for breathing room */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h4 className={`text-[13px] font-semibold text-slate-900 dark:text-white ${f.status === 'completed' ? 'line-through opacity-60' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className={`text-[14px] font-medium text-slate-900 dark:text-white leading-snug ${f.status === 'completed' ? 'line-through opacity-50' : ''}`}>
                       {f.title}
                     </h4>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ring-1 ring-inset ${PRIORITY_COLORS[f.priority]}`}>
-                      {f.priority}
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${STATUS_COLORS[f.status]}`}>
+                    {/* Status badge — only one badge per row, on the right */}
+                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[f.status]}`}>
                       {f.status.replace('_', ' ')}
                     </span>
                   </div>
 
                   {f.notes && (
-                    <p className="text-[12px] text-slate-500 mb-1.5">{f.notes}</p>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{f.notes}</p>
                   )}
 
-                  <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                    <span className="font-mono">lead: {f.leadId.slice(0, 8)}…</span>
-                    <span className="flex items-center gap-1">
-                      {isOverdue ? <AlertCircle size={11} className="text-red-500" strokeWidth={1.75} /> : <Clock size={11} strokeWidth={1.75} />}
-                      <span className={isOverdue ? 'text-red-500' : ''}>
-                        {due.toLocaleString()}
-                      </span>
+                  {/* Metadata row — muted, separated, single line */}
+                  <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${f.priority === 'urgent' ? 'bg-red-500' : f.priority === 'high' ? 'bg-amber-500' : f.priority === 'medium' ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                      <span className="capitalize">{f.priority}</span>
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700">·</span>
+                    <span className="font-mono">{f.leadId.slice(0, 8)}…</span>
+                    <span className="text-slate-300 dark:text-slate-700">·</span>
+                    <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500' : ''}`}>
+                      {isOverdue ? <AlertCircle size={11} strokeWidth={1.75} /> : <Clock size={11} strokeWidth={1.75} />}
+                      {due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {due.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex gap-1 shrink-0">
+                {/* Actions — only visible on hover, prevents visual noise */}
+                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   {f.status !== 'completed' && (
                     <button
                       onClick={() => handleComplete(f)}
-                      className="p-1.5 hover:bg-emerald-500/10 rounded-md text-slate-500 hover:text-emerald-500 transition"
+                      className="p-1.5 hover:bg-emerald-500/10 rounded-md text-slate-400 hover:text-emerald-500 transition"
                       title={isAr ? 'إكمال' : 'Complete'}
                     >
-                      <Check size={14} strokeWidth={2} />
+                      <Check size={15} strokeWidth={1.75} />
                     </button>
                   )}
                   <button
                     onClick={() => handleDelete(f)}
-                    className="p-1.5 hover:bg-red-500/10 rounded-md text-slate-500 hover:text-red-500 transition"
+                    className="p-1.5 hover:bg-red-500/10 rounded-md text-slate-400 hover:text-red-500 transition"
+                    title={isAr ? 'حذف' : 'Delete'}
                   >
-                    <Trash2 size={14} strokeWidth={1.75} />
+                    <Trash2 size={15} strokeWidth={1.75} />
                   </button>
                 </div>
               </motion.div>

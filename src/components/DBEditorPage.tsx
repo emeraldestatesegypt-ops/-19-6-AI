@@ -109,14 +109,14 @@ export default function DBEditorPage({ T, isAr = false }: DBEditorPageProps) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight">
             {isAr ? 'محرر قاعدة البيانات' : 'Database Editor'}
           </h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">
+          <p className="text-[13px] text-slate-500 mt-1">
             {isAr
               ? 'تصفح وحرّر أي مجموعة في Firestore (يتطلب صلاحية superadmin)'
               : 'Browse and edit any Firestore collection (requires superadmin)'}
@@ -232,9 +232,9 @@ export default function DBEditorPage({ T, isAr = false }: DBEditorPageProps) {
             <table className="w-full text-xs">
               <thead className="bg-slate-50 dark:bg-slate-950/50 sticky top-0">
                 <tr className="text-slate-500 uppercase tracking-wider">
-                  <th className="text-left p-2 font-mono">id</th>
-                  <th className="text-left p-2 font-mono">data (preview)</th>
-                  <th className="text-right p-2 w-24">{isAr ? 'إجراءات' : 'Actions'}</th>
+                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-wide text-slate-500">id</th>
+                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-wide text-slate-500">data (preview)</th>
+                  <th className="text-right px-4 py-2.5 w-20 text-[11px] uppercase tracking-wide text-slate-500">{isAr ? "إجراءات" : "Actions"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -245,24 +245,26 @@ export default function DBEditorPage({ T, isAr = false }: DBEditorPageProps) {
                     .map(([k, v]) => `${k}: ${typeof v === 'object' ? '...' : String(v).slice(0, 30)}`)
                     .join(' · ');
                   return (
-                    <tr key={doc.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <td className="p-2 font-mono text-cyan-400 align-top">{doc.id}</td>
-                      <td className="p-2 text-slate-300 font-mono break-all">{preview}</td>
-                      <td className="p-2 text-right">
-                        <button
-                          onClick={() => handleEdit(doc)}
-                          className="p-1 hover:bg-slate-700 rounded text-blue-400 mr-1"
-                          title="Edit"
-                        >
-                          <Edit3 size={12} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(doc)}
-                          className="p-1 hover:bg-slate-700 rounded text-red-400"
-                          title="Delete"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                    <tr key={doc.id} className="group border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                      <td className="px-4 py-3 font-mono text-blue-600 dark:text-blue-400 align-top text-[12px]">{doc.id}</td>
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400 font-mono break-all text-[12px]">{preview}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handleEdit(doc)}
+                            className="p-1.5 hover:bg-blue-500/10 rounded-md text-slate-400 hover:text-blue-500 transition"
+                            title="Edit"
+                          >
+                            <Edit3 size={13} strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(doc)}
+                            className="p-1.5 hover:bg-red-500/10 rounded-md text-slate-400 hover:text-red-500 transition"
+                            title="Delete"
+                          >
+                            <Trash2 size={13} strokeWidth={1.75} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

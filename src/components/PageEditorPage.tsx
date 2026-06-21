@@ -121,13 +121,13 @@ export default function PageEditorPage({ T, isAr = false }: PageEditorPageProps)
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white tracking-tight">
             {isAr ? 'محرر صفحات العميل' : 'Client Page Editor'}
           </h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">
+          <p className="text-[13px] text-slate-500 mt-1">
             {isAr
               ? 'حرّر عناوين ونصوص صفحات الموقع العام بدون نشر كود'
               : 'Edit public site copy and CTAs without a code deploy'}
@@ -159,7 +159,7 @@ export default function PageEditorPage({ T, isAr = false }: PageEditorPageProps)
       )}
 
       {/* Pages grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
           <div className="col-span-full p-8 text-center text-slate-500">
             <RefreshCw className="animate-spin mx-auto mb-2" size={20} />
@@ -173,63 +173,65 @@ export default function PageEditorPage({ T, isAr = false }: PageEditorPageProps)
           pages.map((page) => (
             <div
               key={page.id}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 hover:border-slate-300 dark:hover:border-slate-700 transition"
+              className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 hover:border-slate-300 dark:hover:border-slate-700 transition"
             >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="font-mono text-sm text-blue-600 dark:text-blue-400">{page.slug}</h3>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Globe size={11} className="text-slate-500" />
-                    <span className="text-[10px] uppercase tracking-wider text-slate-500">
-                      {page.locale}
-                    </span>
-                    {page.published ? (
-                      <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[9px] font-bold uppercase">
-                        {isAr ? 'منشور' : 'Live'}
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 bg-slate-700 text-slate-400 rounded text-[9px] font-bold uppercase">
-                        {isAr ? 'مسودة' : 'Draft'}
-                      </span>
-                    )}
+              {/* Top row: slug + status badge */}
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="min-w-0">
+                  <h3 className="font-mono text-[14px] font-medium text-blue-600 dark:text-blue-400">{page.slug}</h3>
+                  <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">
+                    <Globe size={11} strokeWidth={1.75} />
+                    <span className="uppercase tracking-wide">{page.locale}</span>
                   </div>
                 </div>
-              </div>
-
-              <div className="text-[10px] text-slate-500 mb-3 font-mono">
-                {Object.keys(page.sections || {}).length} {isAr ? 'أقسام' : 'sections'}
-                {page.updatedAt && (
-                  <div className="mt-1">
-                    {isAr ? 'آخر تحديث' : 'Updated'}: {new Date(page.updatedAt).toLocaleDateString()}
-                  </div>
+                {page.published ? (
+                  <span className="shrink-0 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium">
+                    {isAr ? 'منشور' : 'Live'}
+                  </span>
+                ) : (
+                  <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-medium">
+                    {isAr ? 'مسودة' : 'Draft'}
+                  </span>
                 )}
               </div>
 
-              <div className="flex gap-1.5">
+              {/* Metadata — single muted line */}
+              <div className="text-[12px] text-slate-500 mb-4">
+                {Object.keys(page.sections || {}).length} {isAr ? 'أقسام' : 'sections'}
+                {page.updatedAt && (
+                  <span className="text-slate-400 dark:text-slate-600"> · {isAr ? 'آخر تحديث' : 'updated'} {new Date(page.updatedAt).toLocaleDateString()}</span>
+                )}
+              </div>
+
+              {/* Actions — hover-only Edit, always-visible publish toggle */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={() => handleEdit(page)}
-                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-800 hover:bg-blue-500/20 hover:text-blue-300 text-slate-300 rounded text-xs font-semibold transition"
+                  className="flex items-center gap-1.5 px-2.5 h-7 bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 rounded-md text-[12px] font-medium transition"
                 >
-                  <Edit3 size={11} />
+                  <Edit3 size={12} strokeWidth={1.75} />
                   {isAr ? 'تحرير' : 'Edit'}
                 </button>
-                <button
-                  onClick={() => handleTogglePublish(page)}
-                  className={`flex items-center justify-center p-1.5 rounded transition ${
-                    page.published
-                      ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300'
-                      : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300'
-                  }`}
-                  title={page.published ? (isAr ? 'إلغاء النشر' : 'Unpublish') : (isAr ? 'نشر' : 'Publish')}
-                >
-                  {page.published ? <EyeOff size={12} /> : <Eye size={12} />}
-                </button>
-                <button
-                  onClick={() => handleDelete(page)}
-                  className="flex items-center justify-center p-1.5 bg-slate-800 hover:bg-red-500/20 hover:text-red-300 text-slate-400 rounded transition"
-                >
-                  <Trash2 size={12} />
-                </button>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleTogglePublish(page)}
+                    className={`flex items-center justify-center p-1.5 rounded-md transition ${
+                      page.published
+                        ? 'text-slate-400 hover:text-amber-500 hover:bg-amber-500/10'
+                        : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10'
+                    }`}
+                    title={page.published ? (isAr ? 'إلغاء النشر' : 'Unpublish') : (isAr ? 'نشر' : 'Publish')}
+                  >
+                    {page.published ? <EyeOff size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(page)}
+                    className="flex items-center justify-center p-1.5 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition"
+                    title={isAr ? 'حذف' : 'Delete'}
+                  >
+                    <Trash2 size={13} strokeWidth={1.75} />
+                  </button>
+                </div>
               </div>
             </div>
           ))
