@@ -7,6 +7,7 @@ import { auth, db, createSierraNotification } from './firebase';
 import { api } from './lib/apiClient';
 import { seedFirestore } from './seed';
 import { motion, AnimatePresence } from 'motion/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Modular Component Imports
 import LoginPage from './components/LoginPage';
@@ -654,21 +655,24 @@ export default function App() {
   };
 
   return (
-    <Routes>
-      <Route path="/" element={<AdminPortal />} />
-      <Route 
-        path="/client" 
-        element={
-          <ClientHub
-            T={T}
-            langKey={langKey}
-            theme={theme}
-            setTheme={setTheme}
-            setTab={setTab}
-            onEnterAdminSession={() => navigate('/')}
-          />
-        } 
-      />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<AdminPortal />} />
+        <Route 
+          path="/client" 
+          element={
+            <ClientHub
+              T={T}
+              langKey={langKey}
+              theme={theme}
+              setTheme={setTheme}
+              setTab={setTab}
+              onEnterAdminSession={() => navigate('/')}
+            />
+          } 
+        />
+      </Routes>
+      <SpeedInsights />
+    </>
   );
 }
